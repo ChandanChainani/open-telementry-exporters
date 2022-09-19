@@ -3,19 +3,18 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/signal"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 
-	"github.com/ChandanChainani/open-telementry-exporters/exporters"
+	"github.com/ChandanChainani/open-telementry-exporters/exporters/outtrace"
 )
 
 func main() {
@@ -34,12 +33,9 @@ func main() {
 		l.Fatal(err)
 	}
 
-	logWriter := &exporters.LogWriter{
-		Writer: func(span *exporters.SpanStub) error {
-			return InsertLog(db, tableName, span)
-		},
-	}
-	exp, err := newExporter(logWriter)
+	exp, err := newExporter(func(span *tracetest.SpanStub) error {
+		return InsertLog(db, tableName, span)
+	})
 	if err != nil {
 		l.Fatal(err)
 	}
@@ -76,14 +72,8 @@ func main() {
 }
 
 // newExporter returns a console exporter.
-func newExporter(w io.Writer) (trace.SpanExporter, error) {
-	return stdouttrace.New(
-		stdouttrace.WithWriter(w),
-		// Use human-readable output.
-		stdouttrace.WithPrettyPrint(),
-		// Do not print timestamps for the demo.
-		stdouttrace.WithoutTimestamps(),
-	)
+func newExporter(w outtrace.WriteCall) (trace.SpanExporter, error) {
+	return outtrace.New(w)
 }
 
 // newResource returns a resource describing this application.
@@ -108,7 +98,7 @@ const insertLogsSQLTemplate = `
   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `
 
-func InsertLog(db Sqlite, tableName string, span *exporters.SpanStub) error {
+func InsertLog(db Sqlite, tableName string, span *tracetest.SpanStub) error {
 	query := fmt.Sprintf(insertLogsSQLTemplate, tableName)
 	if err := db.Insert(
 		query,
